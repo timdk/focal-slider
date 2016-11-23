@@ -4,9 +4,9 @@
  */
 var FocalSlider = (function () {
 
-	/** @type {Image} 64x64 left arrow */
+	/** @type {Image} 32x32 left arrow */
 	var prevIcon = new Image(); prevIcon.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA8UlEQVRYhd2X0QYCQRSG10pPkCRJz5QkXaQXSrJWkvREe5EkSdI7dLfyddFGRrszy5456WevZna/zxk7cyYIKg4QAhEwqPrbrvANr6TAWAvOh8TEF3zL9zyAqRb8nQSoacF3QEMKbq65mb0m/AA0teBHoCUFX1vgJ6AtBV/9MvwMdP4SvtSCB9rw2Ac8LBi7W96tZ49MsirMLFW4AT1piblF4upDYuEg0ZWWiCwSFx8SXv6MIgm9XbGkhMyhZEjYjmWZnsCQcGlMqu+KDAlbJWT6wpISCVC07YtK+Lmi5UikwEgcniORAkNvcEMiBvou85/zmmf/a5dcPQAAAABJRU5ErkJggg==';
-	/** @type {Image} 64x64 right arrow */
+	/** @type {Image} 32x32 right arrow */
 	var nextIcon = new Image(); nextIcon.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA7klEQVRYhe2X0QYCQRSGx0qXK0mPlGSlN1xJkqyeIF0mSZKeJRFfFy1t2m0OO2dmL/qvl++b3ePsP8YIAgyAFGhJnncaYATceGXlVQJIgDuf8SMBTErgfiQAA2wr4N4kYmAXWqIDHEJLdIGjRWLpQ+IUWqIHnJsgcbFILLQl+gKJeVMkotASs79EnmmVhAuzyBhjG7iHA8538tNfLadPVT5B3VdfFy5ZSDrDh2wl62xDQv6UhHCdboCsE6jBJa0o04LHwD4k3FZK10BbA26ATRB4QeLXxUQXXpAYl0hkXuAFiYT35VRn4AQSQ5R63hNnHGgduYs84gAAAABJRU5ErkJggg==';
 
 	/**
@@ -66,8 +66,8 @@ var FocalSlider = (function () {
 		this.container = null;
 		this.canvas = null;
 		this.context = null;
+		
 		this.slides = [];
-
 		this.currentSlideIndex = null;
 		this.numSlides = 0;
 
@@ -279,9 +279,8 @@ var FocalSlider = (function () {
 	function drawIcons(ctx, canvasSize) {
 		ctx.save();
 		ctx.globalAlpha = 0.8;
-		// Images are 64x64 rendered 32x32
-		ctx.drawImage(prevIcon, 0, canvasSize.y/2 - 16, 32,32);
-		ctx.drawImage(nextIcon, canvasSize.x - 32, canvasSize.y/2 - 16, 32, 32);
+		ctx.drawImage(prevIcon, 0, canvasSize.y/2 - 16); // Icons are 32x32
+		ctx.drawImage(nextIcon, canvasSize.x - 32, canvasSize.y/2 - 16);
 		ctx.restore();
 	}
 
@@ -302,9 +301,29 @@ var FocalSlider = (function () {
 		this.setCanvasSize();
 		this.container.appendChild(this.canvas);
 
+		this.addEventListeners();
+	};
+
+	/** Add event handlers for focus/blur, resize and click events */
+	Slider.prototype.addEventListeners = function () {
 		var self = this;
 		// Resize event handler
 		window.addEventListener('resize', function () { self.resize(); }, false);
+
+		// Pause and play slides on blur and focus
+		window.addEventListener('blur', function () {
+			if (typeof self.timer !== 'undefined') {
+				self.resumeTimer = true;
+				self.stop();
+			}
+		});
+		window.addEventListener('focus', function() {
+			if (self.resumeTimer === true) {
+				delete self.resumeTimer;
+				self.start();
+			}
+		});
+
 		// Click hander for forward / back navigation
 		this.canvas.addEventListener('click', function (event) { 
 			// Only navigate if there is no existing animation in progress
@@ -336,12 +355,8 @@ var FocalSlider = (function () {
 
 	/** Set the canvas size to fill its container */
 	Slider.prototype.setCanvasSize = function () {
-		var width = this.container.clientWidth,
-			height = this.container.clientHeight;
-		this.canvas.width = width;
-		this.canvas.height = height;
-		// canvas.setAttribute('width', width);
-		// canvas.setAttribute('height', height);
+		this.canvas.width = this.container.clientWidth;
+		this.canvas.height = this.container.clientHeight;
 	};
 
 	/** window resize event handler. Resizes and redraws the canvas */
