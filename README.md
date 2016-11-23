@@ -15,6 +15,7 @@ Initialise the slider.
 ```javascript
 var slider = new FocalSlider({
 	container: '#slider',	// Any valid queryString
+	hideArrows: false,		// Default: false
 	autoPlay: false,		// Default: true
 	slideDuration: 4000,	// Milliseconds. Default: 5000
 	slides: [ 

@@ -71,8 +71,9 @@ var FocalSlider = (function () {
 		this.currentSlideIndex = null;
 		this.numSlides = 0;
 
+		this.autoPlay = (options.autoPlay !== false);		// Default: true
+		this.hideArrows = (options.hideArrows === true);	// Default: false
 		this.slideDuration = (options.slideDuration || 5000);
-		this.autoPlay = (options.autoPlay !== false);
 		this.transitionPercent = 0;	// Percentage of slide transition animation completed
 
 		this.createCanvas();
@@ -133,7 +134,7 @@ var FocalSlider = (function () {
 
 	/**
 	 * Start the slideshow.
-	 * @param {number} [interval=5000] The interval in ms.
+	 * @param {number} [interval] The interval in ms. If not supplied the last used timer is used. (Default: 5000ms).
 	 */
 	Slider.prototype.start = function (interval) {
 		if (typeof interval !== 'number') {
@@ -141,13 +142,16 @@ var FocalSlider = (function () {
 		} else {
 			this.slideDuration = interval;
 		}
+		this.stop(); // Clear any existing timer
 		this.timer = setInterval(this.next.bind(this), interval);
 	};
 
 	/** Stop the slideshow */
 	Slider.prototype.stop = function () {
-		clearInterval(this.timer);
-		delete this.timer;
+		if (typeof this.timer !== 'undefined') {
+			clearInterval(this.timer);
+			delete this.timer;
+		}
 	};
 
 	/** Restart the slideshow timer. E.g. after manual transition */
@@ -269,7 +273,10 @@ var FocalSlider = (function () {
 		var ctx = this.getContext();
 		ctx.globalAlpha = opacity;
 		ctx.drawImage(slide.image, x, y, displayWidth, displayHeight);
-		drawIcons(ctx, canvasSize);
+		
+		if (!hideIcons) {
+			drawIcons(ctx, canvasSize);
+		}
 	};
 
 	/**
