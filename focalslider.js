@@ -5,9 +5,9 @@
 var FocalSlider = (function () {
 
 	/** @type {Image} 64x64 left arrow */
-	var prevIcon = new Image(); prevIcon.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAMAAABYR2ztAAAAA3NCSVQICAjb4U/gAAAACXBIWXMAAAHbAAAB2wFX5YcfAAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAAC1QTFRF////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwDqzoAAAAA50Uk5TABscMTQ3QJ+ywMPT2/CI1HYCAAAAU0lEQVRIx2NgwApYZicw4AWx7xbglWe9966AgAFvBAgYcIiQAQqjBowaMGoAYQOYCRnAQcAAwgoIWkHQkYS9OWrEqBGjRhA2QoCyqplg5Y7UPAAAGyOXz5tPfLgAAAAASUVORK5CYII=';
+	var prevIcon = new Image(); prevIcon.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA8UlEQVRYhd2X0QYCQRSG10pPkCRJz5QkXaQXSrJWkvREe5EkSdI7dLfyddFGRrszy5456WevZna/zxk7cyYIKg4QAhEwqPrbrvANr6TAWAvOh8TEF3zL9zyAqRb8nQSoacF3QEMKbq65mb0m/AA0teBHoCUFX1vgJ6AtBV/9MvwMdP4SvtSCB9rw2Ac8LBi7W96tZ49MsirMLFW4AT1piblF4upDYuEg0ZWWiCwSFx8SXv6MIgm9XbGkhMyhZEjYjmWZnsCQcGlMqu+KDAlbJWT6wpISCVC07YtK+Lmi5UikwEgcniORAkNvcEMiBvou85/zmmf/a5dcPQAAAABJRU5ErkJggg==';
 	/** @type {Image} 64x64 right arrow */
-	var nextIcon = new Image(); nextIcon.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAMAAABYR2ztAAAAA3NCSVQICAjb4U/gAAAACXBIWXMAAAHbAAAB2wFX5YcfAAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAAC1QTFRF////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwDqzoAAAAA50Uk5TABscMTQ3QJ+ywMPT2/CI1HYCAAAAUElEQVRIx2NggAC2nQ4MeAHXu6v4FbC/exuAVwHjOUJG6BAygmnUiFEjRo2g3AgDQkY0UKaAkBUEHUnIm6MGjBowagCRFSvBqplg5Y6zeQAAXpuXz0b194wAAAAASUVORK5CYII=';
+	var nextIcon = new Image(); nextIcon.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA7klEQVRYhe2X0QYCQRSGx0qXK0mPlGSlN1xJkqyeIF0mSZKeJRFfFy1t2m0OO2dmL/qvl++b3ePsP8YIAgyAFGhJnncaYATceGXlVQJIgDuf8SMBTErgfiQAA2wr4N4kYmAXWqIDHEJLdIGjRWLpQ+IUWqIHnJsgcbFILLQl+gKJeVMkotASs79EnmmVhAuzyBhjG7iHA8538tNfLadPVT5B3VdfFy5ZSDrDh2wl62xDQv6UhHCdboCsE6jBJa0o04LHwD4k3FZK10BbA26ATRB4QeLXxUQXXpAYl0hkXuAFiYT35VRn4AQSQ5R63hNnHGgduYs84gAAAABJRU5ErkJggg==';
 
 	/**
 	 * @enum {string}
@@ -192,8 +192,8 @@ var FocalSlider = (function () {
 			return;
 		}
 		requestAnimFrame(this.fadeTransition.bind(this, currentSlide, nextSlide));
-		this.drawImage(currentSlide, this.transitionPercent / 100);
-		this.drawImage(nextSlide, (1 - this.transitionPerecent / 100));
+		this.drawImage(nextSlide, this.transitionPercent / 100);
+		this.drawImage(currentSlide, (1 - this.transitionPercent / 100));
 		this.transitionPercent += 4;
 	};
 
@@ -278,7 +278,7 @@ var FocalSlider = (function () {
 	 */
 	function drawIcons(ctx, canvasSize) {
 		ctx.save();
-		ctx.globalAlpha = 0.5;
+		ctx.globalAlpha = 0.8;
 		// Images are 64x64 rendered 32x32
 		ctx.drawImage(prevIcon, 0, canvasSize.y/2 - 16, 32,32);
 		ctx.drawImage(nextIcon, canvasSize.x - 32, canvasSize.y/2 - 16, 32, 32);
@@ -307,13 +307,16 @@ var FocalSlider = (function () {
 		window.addEventListener('resize', function () { self.resize(); }, false);
 		// Click hander for forward / back navigation
 		this.canvas.addEventListener('click', function (event) { 
-			var pos = getCursorPosition(self.canvas, event); 
-			var size = self.getCanvasSize();
-			// Navigate if clicking on the left or right of the image
-			if (pos.x > 0 && pos.x < 64) {
-				self.previous();
-			} else if (pos.x > (size.x - 64) && pos.x < size.x) {
-				self.next();
+			// Only navigate if there is no existing animation in progress
+			if (self.transitionPercent === 0) {
+				var pos = getCursorPosition(self.canvas, event); 
+				var size = self.getCanvasSize();
+				// Navigate if clicking on the left or right of the image
+				if (pos.x > 0 && pos.x < 64) {
+					self.previous();
+				} else if (pos.x > (size.x - 64) && pos.x < size.x) {
+					self.next();
+				}
 			}
 		});
 	};
