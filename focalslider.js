@@ -1,78 +1,225 @@
 /**
- * AnchorSlider v0.1
+ * FocalSlider v0.1
  * Author: Tim King
  */
-var AnchorSlider = (function () {
-	var anchorSlider = {};
+var FocalSlider = (function () {
 
-	var _containerSelector;
-	var _container;
-	var _canvas;
-	var _context;
-
-	var _slides = [];
+	/** @type {Image} 64x64 left arrow */
+	var prevIcon = new Image(); prevIcon.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAMAAABYR2ztAAAAA3NCSVQICAjb4U/gAAAACXBIWXMAAAHbAAAB2wFX5YcfAAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAAC1QTFRF////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwDqzoAAAAA50Uk5TABscMTQ3QJ+ywMPT2/CI1HYCAAAAU0lEQVRIx2NgwApYZicw4AWx7xbglWe9966AgAFvBAgYcIiQAQqjBowaMGoAYQOYCRnAQcAAwgoIWkHQkYS9OWrEqBGjRhA2QoCyqplg5Y7UPAAAGyOXz5tPfLgAAAAASUVORK5CYII=';
+	/** @type {Image} 64x64 right arrow */
+	var nextIcon = new Image(); nextIcon.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAMAAABYR2ztAAAAA3NCSVQICAjb4U/gAAAACXBIWXMAAAHbAAAB2wFX5YcfAAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAAC1QTFRF////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwDqzoAAAAA50Uk5TABscMTQ3QJ+ywMPT2/CI1HYCAAAAUElEQVRIx2NggAC2nQ4MeAHXu6v4FbC/exuAVwHjOUJG6BAygmnUiFEjRo2g3AgDQkY0UKaAkBUEHUnIm6MGjBowagCRFSvBqplg5Y6zeQAAXpuXz0b194wAAAAASUVORK5CYII=';
 
 	/**
 	 * @enum {string}
 	 */
-	var Anchor = {
-		'top_left': 0,
-		'top_middle': 1,
-		'top_right': 2,
-		'middle_left': 3,
-		'middle': 4,
-		'middle_right': 5,
+	var FocalPoint = {
+		'TOP_LEFT': 0,
+		'TOP_MIDDLEe': 1,
+		'TOP_RIGHT': 2,
+		'MIDDLE_LEFT': 3,
+		'MIDDLE': 4,
+		'MIDDLE_RIGHT': 5,
 		'BOTTOM_LEFT': 6,
-		'bottom_middle': 7,
-		'bottom_right': 8
+		'BOTTOM_MIDDLE': 7,
+		'BOTTOM_RIGHT': 8
+	};
+
+	/** Cross browse compatibility for requestAnimationFrame */
+	var requestAnimFrame = (function (callback) {
+		return window.requestAnimationFrame || 
+			window.webkitRequestAnimationFrame || 
+			window.mozRequestAnimationFrame || 
+			window.oRequestAnimationFrame || 
+			window.msRequestAnimationFrame ||
+			function(callback) {
+				window.setTimeout(callback, 1000 / 60); // 60 FPS
+			};
+	})();
+
+	/**
+	 * A slide
+	 * @param {Image} image  
+	 * @param {number} focalPoint The focal point
+	 */
+	function Slide(image, focalPoint) {
+		this.image = image;
+		this.focalPoint = focalPoint;
+		this.index = null;
+		this.parent = null;
+	}
+	/** Show the slide on its parent slider */
+	Slide.prototype.show = function () {
+		this.parent.showSlide(this);
 	};
 
 	/**
-	 * A slider slide
-	 * @param {Image} image  
-	 * @param {number} anchor The anchor point
+	 * Create a new slider.
+	 * @param {Object} options 				The slider configuration.
+	 * @param {string} options.container 	Query string for the container.
+	 * @param {Object[]} options.slides 	Slides containing a src and focus attributes.
+	 * @param {string} [slideDuration=5000] Duration of each slide in ms when autoPlay is on.
+	 * @param {boolean} [autoPlay=true]	Auto start the slide transitions. 			
 	 */
-	function Slide(image, anchor) {
-		this.image = image;
-		this.anchor = anchor;
+	function Slider(options) {
+		this.containerSelector = options.container;
+		
+		this.container = null;
+		this.canvas = null;
+		this.context = null;
+		this.slides = [];
+
+		this.currentSlideIndex = null;
+		this.numSlides = 0;
+
+		this.slideDuration = (options.slideDuration || 5000);
+		this.autoPlay = (options.autoPlay !== false);
+		this.transitionPercent = 0;	// Percentage of slide transition animation completed
+
+		this.createCanvas();
+		if (options.slides && options.slides.length > 0) {
+			this.loadSlides(options.slides);
+		}
 	}
-	Slide.prototype.show = function () {
-		drawImage(this);
+
+	/**
+	 * Add a slide. Sets the index and parent references on the slide.
+	 * @param {Slide} slide 
+	 */
+	Slider.prototype.addSlide = function (slide) {
+		this.slides.push(slide);
+		this.numSlides = this.slides.length;
+		slide.parent = this;
+		slide.index = this.numSlides - 1;
+	};
+
+	/**
+	 * Show a slide
+	 * @param  {number|Slide} slide 	Either a slide or slide index.
+	 */
+	Slider.prototype.showSlide = function (slide) {
+		var index;
+		if (slide === undefined || slide === null) {
+			index = this.currentSlideIndex;
+			slide = this.slides[index];
+		} else if (typeof slide === 'number') {
+			index = slide;
+			slide = this.slides[index];
+		} else {
+			index = slide.index;
+		}
+		this.drawImage(slide);
+		this.currentSlideIndex = index;
+	};
+
+	/** Show the next slide with a fade animation */
+	Slider.prototype.next = function () {
+		var currentSlide = this.slides[this.currentSlideIndex];
+		if (++this.currentSlideIndex === this.numSlides) {
+			this.currentSlideIndex = 0;
+		}
+		var nextSlide = this.slides[this.currentSlideIndex];
+		this.fadeTransition(currentSlide, nextSlide);
+	};
+
+	/** Show the previous slide with a fade animation */
+	Slider.prototype.previous = function () {
+		var currentSlide = this.slides[this.currentSlideIndex];
+		if (--this.currentSlideIndex == -1) {
+			this.currentSlideIndex = this.numSlides - 1;
+		}
+		var nextSlide = this.slides[this.currentSlideIndex];
+		this.fadeTransition(currentSlide, nextSlide);
+	};
+
+	/**
+	 * Start the slideshow.
+	 * @param {number} [interval=5000] The interval in ms.
+	 */
+	Slider.prototype.start = function (interval) {
+		if (typeof interval !== 'number') {
+			interval = this.slideDuration;
+		} else {
+			this.slideDuration = interval;
+		}
+		this.timer = setInterval(this.next.bind(this), interval);
+	};
+
+	/** Stop the slideshow */
+	Slider.prototype.stop = function () {
+		clearInterval(this.timer);
+		delete this.timer;
+	};
+
+	/** Restart the slideshow timer. E.g. after manual transition */
+	Slider.prototype.restart = function() {
+		this.stop();
+		this.start();
+	};
+	
+	/** Get the canvas for this slider */
+	Slider.prototype.getCanvas = function () {
+		return this.canvas;
 	};
 
 	/** Get the canvas 2d context */
-	function getContext() {
-		if (!_context) {
-			_context = _canvas.getContext('2d');
+	Slider.prototype.getContext = function () {
+		if (!this.context) {
+			this.context = this.canvas.getContext('2d');
 		}
-		return _context;
-	}
-
-	function getCanvas() {
-		return document.querySelector(_containerSelector + ' canvas');
-	}
+		return this.context;
+	};
 
 	/**
 	 * Get the canvas dimensions
 	 * @return {Object} Contains x and y properties
 	 */
-	function getCanvasSize() {
-		return { x: _canvas.scrollWidth, y: _canvas.scrollHeight };
-	}
+	Slider.prototype.getCanvasSize = function () {
+		return { x: this.getCanvas().scrollWidth, y: this.getCanvas().scrollHeight };
+	};
 
+	/**
+	 * Fade into the next slide
+	 * @param  {Slide} currentSlide 
+	 * @param  {Slide} nextSlide    
+	 */
+	Slider.prototype.fadeTransition = function (currentSlide, nextSlide) {
+		if (this.transitionPercent > 100) {
+			this.transitionPercent = 0;
+			// Restart the timer if autoplay is on.
+			if (this.timer !== undefined) {
+				this.restart();
+			}
+			return;
+		}
+		requestAnimFrame(this.fadeTransition.bind(this, currentSlide, nextSlide));
+		this.drawImage(currentSlide, this.transitionPercent / 100);
+		this.drawImage(nextSlide, (1 - this.transitionPerecent / 100));
+		this.transitionPercent += 4;
+	};
 
-	function drawImage(slide) {
-		var x = 0, y = 0; // Placement of the top left corner of image. 0,0 is top left of canvas
+	/**
+	 * Draw the image on the canvas. Image is scaled to fit canvas dimensions and moved so that
+	 * the configured focal point is always visible.
+	 * @param  {Slide} slide 
+	 * @param {number} [opacity=1] Slide opacity used for transition.
+	 */
+	Slider.prototype.drawImage = function (slide, opacity) {
+		if (opacity === undefined) {
+			opacity = 1;
+		}
+		// Calculate image & canvas ratios
+		var imageWidth = slide.image.width, 
+			imageHeight = slide.image.height,
+			imageRatio = imageWidth / imageHeight;
 
-		var imageWidth = slide.image.width, imageHeight = slide.image.height;
-		var imageRatio = imageWidth / imageHeight;
+		var canvasSize = this.getCanvasSize(),
+			canvasWidth = canvasSize.x,
+			canvasHeight = canvasSize.y,
+			canvasRatio = canvasWidth / canvasHeight;
 
-		var canvasSize = getCanvasSize();
-		var canvasWidth = canvasSize.x, canvasHeight = canvasSize.y;
-		var canvasRatio = canvasWidth / canvasHeight;
-
+		// Scale image to fill canvas with no white space. 
+		// One of the display dimensions will be larger than the canvas
 		var displayWidth, displayHeight; // Scaled image dimensions
-		// Scale image to fill canvas with no white space
 		if (canvasRatio < imageRatio) {
 			displayWidth = imageWidth * canvasHeight / imageHeight;
 			displayHeight = canvasHeight;
@@ -81,86 +228,170 @@ var AnchorSlider = (function () {
 			displayHeight = imageHeight * canvasWidth / imageWidth;
 		}
 
-		// Move the image so its anchor point is always visible
-		switch (slide.anchor) {
-			case Anchor.BOTTOM_LEFT:
-				// if imageHeight is > canvasHeight, reduce y
+		// Move the image so its focal point is always visible
+		var x = 0, y = 0; // Placement of the top left corner of image. 0,0 is top left of canvas
+
+		// Move X
+		switch (slide.focalPoint) {
+			case FocalPoint.TOP_RIGHT:
+			case FocalPoint.MIDDLE_RIGHT:
+			case FocalPoint.BOTTOM_RIGHT:
+				if (displayWidth > canvasWidth) {
+					x = canvasWidth - displayWidth;
+				}
+				break;
+			case FocalPoint.TOP_MIDDLE:
+			case FocalPoint.MIDDLE:
+			case FocalPoint.BOTTOM_MIDDLE:
+				if (displayWidth > canvasWidth) {
+					x = (canvasWidth - displayWidth)/2;
+				}
+				break;
+		}
+		// Move Y
+		switch (slide.focalPoint) {
+			case FocalPoint.BOTTOM_LEFT:
+			case FocalPoint.BOTTOM_MIDDLE:
+			case FocalPoint.BOTTOM_RIGHT:
 				if (displayHeight > canvasHeight) {
 					y = canvasHeight - displayHeight;
 				}
 				break;
+			case FocalPoint.MIDDLE_LEFT:
+			case FocalPoint.MIDDLE:
+			case FocalPoint.MIDDLE_RIGHT:
+				if (displayHeight > canvasHeight) {
+					y = (canvasHeight - displayHeight)/2;
+				}
+				break;
 		}
+		// Draw the iamge on the slider
+		var ctx = this.getContext();
+		ctx.globalAlpha = opacity;
+		ctx.drawImage(slide.image, x, y, displayWidth, displayHeight);
+		drawIcons(ctx, canvasSize);
+	};
 
-		getContext().drawImage(slide.image, x, y, displayWidth, displayHeight);
+	/**
+	 * Draw icons for next and previous navigation
+	 * @param {CanvasRenderingContext2D} ctx
+	 */
+	function drawIcons(ctx, canvasSize) {
+		ctx.save();
+		ctx.globalAlpha = 0.5;
+		// Images are 64x64 rendered 32x32
+		ctx.drawImage(prevIcon, 0, canvasSize.y/2 - 16, 32,32);
+		ctx.drawImage(nextIcon, canvasSize.x - 32, canvasSize.y/2 - 16, 32, 32);
+		ctx.restore();
 	}
 
 	/**
 	 * Create the canvas inside the element returned by the given selector.
 	 * @param  {string} containerSelector A valid query string
 	 */
-	function createCanvas(containerSelector) {
+	Slider.prototype.createCanvas = function (containerSelector) {
 		// TODO validate container selector
 		// Throw exceptions on problems
-		_containerSelector = containerSelector;
-		_container = document.querySelector(containerSelector);
-		_canvas = document.createElement('canvas');
-		_container.appendChild(_canvas);
-		resizeCanvas();
-		window.addEventListener('resize', resizeCanvas, false);
-	}
+		if (!containerSelector) {
+			containerSelector = this.containerSelector;
+		} else {
+			this.containerSelector = containerSelector;
+		}
+		this.container = document.querySelector(containerSelector);
+		this.canvas = document.createElement('canvas');
+		this.setCanvasSize();
+		this.container.appendChild(this.canvas);
 
-	function resizeCanvas() {
-		console.log('resizing canvas');
-		getCanvas().setAttribute('width', _container.scrollWidth);
-		_canvas.height = _container.scrollHeight;
-	}
+		var self = this;
+		// Resize event handler
+		window.addEventListener('resize', function () { self.resize(); }, false);
+		// Click hander for forward / back navigation
+		this.canvas.addEventListener('click', function (event) { 
+			var pos = getCursorPosition(self.canvas, event); 
+			var size = self.getCanvasSize();
+			// Navigate if clicking on the left or right of the image
+			if (pos.x > 0 && pos.x < 64) {
+				self.previous();
+			} else if (pos.x > (size.x - 64) && pos.x < size.x) {
+				self.next();
+			}
+		});
+	};
 
 	/**
-	 * Preload slides sequentially. When the first slide is 
-	 * loaded it is displayed automatically
-	 * @param  {Array<Object>} slides
+	 * Get the coordinates of a click event that occured on the canvas.
+	 * @param  {HTMLElement} canvas
+	 * @param  {event} event  
+	 * @return {Object}        Contains x and y properties. Origin is top left.
 	 */
-	function loadSlides(slides) {
-		createSlides(slides);
+	function getCursorPosition(canvas, event) {
+		var rect = canvas.getBoundingClientRect();
+		var x = event.clientX - rect.left;
+		var y = event.clientY - rect.top;
+		return { x: x, y: y };
 	}
 
-	function createSlides(slides, i) {
+	/** Set the canvas size to fill its container */
+	Slider.prototype.setCanvasSize = function () {
+		var width = this.container.clientWidth,
+			height = this.container.clientHeight;
+		this.canvas.width = width;
+		this.canvas.height = height;
+		// canvas.setAttribute('width', width);
+		// canvas.setAttribute('height', height);
+	};
+
+	/** window resize event handler. Resizes and redraws the canvas */
+	Slider.prototype.resize = function () {
+		this.setCanvasSize();
+		// Don't redraw during transition -- the transition will dedraw.	
+		if (this.transitionPercent === 0) {
+			this.drawImage(this.slides[this.currentSlideIndex]);
+		}
+	};
+
+	/**
+	 * Asynchronously preload slides in sequence and add to slider. 
+	 * When the first slide is loaded it is displayed automatically.
+	 * @param  {Array<Object>} slides
+	 * @param {number} [i=0] The index in the first parameter to load.
+	 */
+	Slider.prototype.loadSlides = function (slides, i) {
 		if (i === undefined) {
 			i = 0;
 		}
-		// console.log('Loading slide ' + i);
+
+		/** Load the next slide -- invoked from load/error handlers */
+		var self = this;
+		function loadNext() {
+			if (i < slides.length-1) {
+				self.loadSlides(slides, ++i);
+			}
+		}
+
 		var img = new Image();
 		img.onload = function () {
-			//console.log('Slide ' + i + ' loaded');
-			var slide = new Slide(img, Anchor[slides[i].anchor]);
-			_slides.push(slide);
+			var focalPoint = slides[i].focus.toUpperCase().replace('-', '_'); // top-left -> TOP_LEFT
+			var slide = new Slide(img, FocalPoint[focalPoint]);
+			self.addSlide(slide);
 
 			// If this is the first image, show it 
 			if (i === 0) {
 				slide.show();
+				if (self.autoPlay) { 
+					self.start(); 
+				}
 			}
 
 			// Load the next slide
-			if (i < slides.length-1) {
-				createSlides(slides, ++i);
-			}
+			loadNext();
+		};
+		img.onerror = function () {
+			console.error('Unable to load image ' + i + ' src: ' + slides[i].src);
+			loadNext();
 		};
 		img.src = slides[i].src;
-	}
-
-	anchorSlider.init = function (options) {
-		// Create the canvas inside the container.
-		try {
-			createCanvas(options.container);
-		} catch (e) {
-			console.log(e);
-			console.error('Error creating canvas - check configuration. Container: ' + options.container);
-			return;
-		}
-
-		loadSlides(options.slides);
 	};
 
-
-	return anchorSlider;
+	return Slider;
 })();
