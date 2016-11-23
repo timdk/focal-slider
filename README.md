@@ -36,3 +36,7 @@ There are 9 focal points to choose from.
 | top-left    | top-middle    | top-right    |
 | middle-left | middle        | middle-right |
 | bottom-left | bottom-middle | bottom-right |
+
+## Demo
+
+View an active demo on the homepage of [Louis Trerise Photography](http://louistrerise.com).
