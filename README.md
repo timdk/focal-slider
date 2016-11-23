@@ -30,8 +30,8 @@ var slider = new FocalSlider({
 
 ### Focal Points
 There are 9 focal points to choose from.
-|Left       |Middle       |Right       |
-|-----------|:-----------:|-----------:|
-|top-left   |top-middle   |top-right   |
-|middle-left|middle       |middle-right|
-|bottom-left|bottom-middle|bottom-right|
+| Left        | Middle        | Right        |
+| ----------- | :-----------: | -----------: |
+| top-left    | top-middle    | top-right    |
+| middle-left | middle        | middle-right |
+| bottom-left | bottom-middle | bottom-right |
