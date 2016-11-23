@@ -1,6 +1,6 @@
 # Focal Slider
 
-Focal Slider is an image slideshow using `<canvas>` that allows you to set a focal point on each slide so when the image is scaled to fit its container, the most important part is always visible.
+Focal Slider is an image slideshow using `<canvas>` that allows you to set a focal point on each slide so when the image is scaled to fill its container, the most important part is always visible.
 
 ## Usage
 
