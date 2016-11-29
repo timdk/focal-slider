@@ -36,6 +36,19 @@ var FocalSlider = (function () {
 			};
 	})();
 
+	// Set the name of the hidden property and the change event for visibility
+	var hidden, visibilityChange; 
+	if (typeof document.hidden !== "undefined") { // Opera 12.10 and Firefox 18 and later support 
+		hidden = "hidden";
+		visibilityChange = "visibilitychange";
+	} else if (typeof document.msHidden !== "undefined") {
+		hidden = "msHidden";
+		visibilityChange = "msvisibilitychange";
+	} else if (typeof document.webkitHidden !== "undefined") {
+		hidden = "webkitHidden";
+		visibilityChange = "webkitvisibilitychange";
+	}
+
 	/**
 	 * A slide
 	 * @param {Image} image  
@@ -274,7 +287,7 @@ var FocalSlider = (function () {
 		ctx.globalAlpha = opacity;
 		ctx.drawImage(slide.image, x, y, displayWidth, displayHeight);
 		
-		if (!hideIcons) {
+		if (!this.hideIcons) {
 			drawIcons(ctx, canvasSize);
 		}
 	};
@@ -317,19 +330,20 @@ var FocalSlider = (function () {
 		// Resize event handler
 		window.addEventListener('resize', function () { self.resize(); }, false);
 
-		// Pause and play slides on blur and focus
-		window.addEventListener('blur', function () {
-			if (typeof self.timer !== 'undefined') {
-				self.resumeTimer = true;
-				self.stop();
+		// Pause and play slides on vsibility change
+		document.addEventListener(visibilityChange, function () {
+			if (document[hidden]) {
+				if (typeof self.timer !== 'undefined') {
+					self.resumeTimer = true;
+					self.stop();
+				}
+			} else {
+				if (self.resumeTimer === true) {
+					delete self.resumeTimer;
+					self.start();
+				}
 			}
-		});
-		window.addEventListener('focus', function() {
-			if (self.resumeTimer === true) {
-				delete self.resumeTimer;
-				self.start();
-			}
-		});
+		}, false);
 
 		// Click hander for forward / back navigation
 		this.canvas.addEventListener('click', function (event) { 
@@ -344,7 +358,7 @@ var FocalSlider = (function () {
 					self.next();
 				}
 			}
-		});
+		}, false);
 	};
 
 	/**
