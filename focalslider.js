@@ -36,7 +36,7 @@ var FocalSlider = (function () {
 			};
 	})();
 
-	// Set the name of the hidden property and the change event for visibility
+	/** Set the name of the hidden property and the change event for visibility */
 	var hidden, visibilityChange; 
 	if (typeof document.hidden !== "undefined") { // Opera 12.10 and Firefox 18 and later support 
 		hidden = "hidden";
@@ -49,20 +49,67 @@ var FocalSlider = (function () {
 		visibilityChange = "webkitvisibilitychange";
 	}
 
+	/** CustomEvent Polyfill */
+	(function () {
+		if ( typeof window.CustomEvent === "function" ) return false;
+
+		function CustomEvent ( event, params ) {
+			params = params || { bubbles: false, cancelable: false, detail: undefined };
+			var evt = document.createEvent( 'CustomEvent' );
+			evt.initCustomEvent( event, params.bubbles, params.cancelable, params.detail );
+			return evt;
+		}
+
+		CustomEvent.prototype = window.Event.prototype;
+
+		window.CustomEvent = CustomEvent;
+	})();
+
 	/**
 	 * A slide
 	 * @param {Image} image  
 	 * @param {number} focalPoint The focal point
 	 */
-	function Slide(image, focalPoint) {
-		this.image = image;
-		this.focalPoint = focalPoint;
-		this.index = null;
-		this.parent = null;
+	function Slide(src, focalPoint, parentSlider, index) {
+		this.src = src;
+		this.focalPoint = FocalPoint[focalPoint.toUpperCase().replace('-', '_')]; // top-left -> TOP_LEFT
+		this.parent = parentSlider;
+		this.index = index;
+		
+		this.image = new Image();
+		this.loaded = false;
 	}
+
+	/**
+	 * Load the slide
+	 * @param  {Function} callback      
+	 * @param  {Function}   errorCallback 
+	 */
+	Slide.prototype.load = function (callback, errorCallback) {
+		var self = this;
+		this.image.onload = function () {
+			self.loaded = true;
+			if (typeof callback === 'function') {
+				callback(self);
+			}
+		};
+		this.image.onerror = function () {
+			console.error('Unable to load image ' + i + ' src: ' + slides[i].src);
+			if (typeof errorCallback === 'function') {
+				errorCallback(self);
+			}
+		};
+		this.image.src = this.src;
+	};
+
 	/** Show the slide on its parent slider */
 	Slide.prototype.show = function () {
-		this.parent.showSlide(this);
+		if (this.loaded) {
+			this.parent.showSlide(this);
+		} else {
+			var self = this;
+			this.load(function () { self.parent.showSlide(this); });
+		}
 	};
 
 	/**
@@ -81,13 +128,13 @@ var FocalSlider = (function () {
 		this.context = null;
 		
 		this.slides = [];
-		this.currentSlideIndex = null;
+		this.currentSlideIndex = -1;
 		this.numSlides = 0;
 
 		this.autoPlay = (options.autoPlay !== false);		// Default: true
 		this.hideArrows = (options.hideArrows === true);	// Default: false
 		this.slideDuration = (options.slideDuration || 5000);
-		this.transitionPercent = 0;	// Percentage of slide transition animation completed
+		this.transitionInProgress = false;
 
 		this.createCanvas();
 		if (options.slides && options.slides.length > 0) {
@@ -99,11 +146,49 @@ var FocalSlider = (function () {
 	 * Add a slide. Sets the index and parent references on the slide.
 	 * @param {Slide} slide 
 	 */
-	Slider.prototype.addSlide = function (slide) {
-		this.slides.push(slide);
-		this.numSlides = this.slides.length;
-		slide.parent = this;
-		slide.index = this.numSlides - 1;
+	Slider.prototype.addSlide = function (src, focalPoint) {
+		this.numSlides = this.slides.push(new Slide(src, focalPoint, this, this.slides.length));
+	};
+
+	/**
+	 * Remove a slide from the.
+	 * @param  {number} index The index of the slide to remove
+	 */
+	Slider.prototype.removeSlide = function (index) {
+		if (typeof this.slides[index] !== 'undefined') {
+			this.slides.splice(index, 1);
+			for (; index < this.slides.length; index++) {
+				this.slides[index].index = index;
+			}
+		}
+	};
+
+	/**
+	 * Asynchronously preload slides in sequence and add to slider. 
+	 * When the first slide is loaded it is displayed automatically.
+	 * @param  {Array<Object>} slides Options from configuration JSON.
+	 */
+	Slider.prototype.loadSlides = function (slides) {
+		for (i = 0; i < slides.length; i++) {
+			this.addSlide(slides[i].src, slides[i].focus);
+		}
+
+		this.waiting = true; // Shows slide when loaded
+		var self = this;
+		var slideLoaded = function (slide) {
+			var event = new CustomEvent('slideloaded', { detail: slide });
+			self.getCanvas().dispatchEvent(event);
+
+			// Load next slide;
+			if (slide.index < self.numSlides - 1) {
+				self.slides[slide.index+1].load(slideLoaded);
+			}
+		};
+		this.slides[0].load(slideLoaded);
+
+		if (this.autoPlay) {
+			this.start();
+		}
 	};
 
 	/**
@@ -121,28 +206,75 @@ var FocalSlider = (function () {
 		} else {
 			index = slide.index;
 		}
-		this.drawImage(slide);
-		this.currentSlideIndex = index;
+
+		// transition to new slide
+		if (this.currentSlideIndex !== -1) {
+			var currentSlide = this.slides[this.currentSlideIndex];
+			var self = this;
+			this.transitionInProgress = true;
+			fadeTransition(this, currentSlide, slide, 0, function () {
+				// Restart the timer if autoplay is on.
+				self.transitionInProgress = false;
+				self.currentSlideIndex = index;
+				if (self.timer !== undefined) {
+					self.restart();
+				}
+			});
+		} else {
+			this.drawImage(slide);
+			this.currentSlideIndex = index;
+		}
 	};
+
+	/**
+	 * Fade into the next slide
+	 * @param {slider} Slider 
+	 * @param  {Slide} currentSlide 
+	 * @param  {Slide} nextSlide
+	 * @param {transitionPercent} number Percentage of transition completed
+	 * @param {callback} Function Executed when transition is complete    
+	 */
+	function fadeTransition(slider, currentSlide, nextSlide, transitionPercent, callback) {
+		if (transitionPercent > 100) {
+			if (typeof callback === 'function') {
+				callback();
+			}
+			return;
+		}
+		slider.drawImage(nextSlide, transitionPercent / 100);
+		slider.drawImage(currentSlide, (1 - transitionPercent / 100));
+		transitionPercent += 4;
+		requestAnimFrame(function () { fadeTransition(slider, currentSlide, nextSlide, transitionPercent, callback); });
+	}
 
 	/** Show the next slide with a fade animation */
 	Slider.prototype.next = function () {
-		var currentSlide = this.slides[this.currentSlideIndex];
-		if (++this.currentSlideIndex === this.numSlides) {
-			this.currentSlideIndex = 0;
+		var nextSlideIndex = this.currentSlideIndex+1;
+		if (nextSlideIndex === this.numSlides) {
+			nextSlideIndex = 0;
 		}
-		var nextSlide = this.slides[this.currentSlideIndex];
-		this.fadeTransition(currentSlide, nextSlide);
+		var nextSlide = this.slides[nextSlideIndex];
+		
+		if (nextSlide.loaded) {
+			this.showSlide(nextSlide);
+		} else {
+			this.waiting = true; // slide loaded event handler will display it
+		}
 	};
 
 	/** Show the previous slide with a fade animation */
 	Slider.prototype.previous = function () {
-		var currentSlide = this.slides[this.currentSlideIndex];
-		if (--this.currentSlideIndex == -1) {
-			this.currentSlideIndex = this.numSlides - 1;
+		var nextSlideIndex = this.currentSlideIndex - 1;
+		if (nextSlideIndex === -1) {
+			nextSlideIndex = this.numSlides - 1;
 		}
-		var nextSlide = this.slides[this.currentSlideIndex];
-		this.fadeTransition(currentSlide, nextSlide);
+		var nextSlide = this.slides[nextSlideIndex];
+		
+		if (nextSlide.loaded) {
+			this.showSlide(nextSlide);
+		} else {
+			this.waiting = true; // slide loaded event handler will display it
+		}
 	};
 
 	/**
@@ -192,26 +324,6 @@ var FocalSlider = (function () {
 	 */
 	Slider.prototype.getCanvasSize = function () {
 		return { x: this.getCanvas().scrollWidth, y: this.getCanvas().scrollHeight };
-	};
-
-	/**
-	 * Fade into the next slide
-	 * @param  {Slide} currentSlide 
-	 * @param  {Slide} nextSlide    
-	 */
-	Slider.prototype.fadeTransition = function (currentSlide, nextSlide) {
-		if (this.transitionPercent > 100) {
-			this.transitionPercent = 0;
-			// Restart the timer if autoplay is on.
-			if (this.timer !== undefined) {
-				this.restart();
-			}
-			return;
-		}
-		requestAnimFrame(this.fadeTransition.bind(this, currentSlide, nextSlide));
-		this.drawImage(nextSlide, this.transitionPercent / 100);
-		this.drawImage(currentSlide, (1 - this.transitionPercent / 100));
-		this.transitionPercent += 4;
 	};
 
 	/**
@@ -348,7 +460,7 @@ var FocalSlider = (function () {
 		// Click hander for forward / back navigation
 		this.canvas.addEventListener('click', function (event) { 
 			// Only navigate if there is no existing animation in progress
-			if (self.transitionPercent === 0) {
+			if (!self.transitionInProgress) {
 				var pos = getCursorPosition(self.canvas, event); 
 				var size = self.getCanvasSize();
 				// Navigate if clicking on the left or right of the image
@@ -359,6 +471,14 @@ var FocalSlider = (function () {
 				}
 			}
 		}, false);
+
+		// If waiting for next slide to load to display it, show it when it's ready
+		this.canvas.addEventListener('slideloaded', function (event) {
+			if (self.waiting) {
+				self.waiting = false;
+				self.showSlide(event.detail);
+			}
+		});
 	};
 
 	/**
@@ -384,52 +504,9 @@ var FocalSlider = (function () {
 	Slider.prototype.resize = function () {
 		this.setCanvasSize();
 		// Don't redraw during transition -- the transition will dedraw.	
-		if (this.transitionPercent === 0) {
+		if (!this.transitionInProgress) {
 			this.drawImage(this.slides[this.currentSlideIndex]);
 		}
-	};
-
-	/**
-	 * Asynchronously preload slides in sequence and add to slider. 
-	 * When the first slide is loaded it is displayed automatically.
-	 * @param  {Array<Object>} slides
-	 * @param {number} [i=0] The index in the first parameter to load.
-	 */
-	Slider.prototype.loadSlides = function (slides, i) {
-		if (i === undefined) {
-			i = 0;
-		}
-
-		/** Load the next slide -- invoked from load/error handlers */
-		var self = this;
-		function loadNext() {
-			if (i < slides.length-1) {
-				self.loadSlides(slides, ++i);
-			}
-		}
-
-		var img = new Image();
-		img.onload = function () {
-			var focalPoint = slides[i].focus.toUpperCase().replace('-', '_'); // top-left -> TOP_LEFT
-			var slide = new Slide(img, FocalPoint[focalPoint]);
-			self.addSlide(slide);
-
-			// If this is the first image, show it 
-			if (i === 0) {
-				slide.show();
-				if (self.autoPlay) { 
-					self.start(); 
-				}
-			}
-
-			// Load the next slide
-			loadNext();
-		};
-		img.onerror = function () {
-			console.error('Unable to load image ' + i + ' src: ' + slides[i].src);
-			loadNext();
-		};
-		img.src = slides[i].src;
 	};
 
 	return Slider;
