@@ -14,7 +14,7 @@ var FocalSlider = (function () {
 	 */
 	var FocalPoint = {
 		'TOP_LEFT': 0,
-		'TOP_MIDDLEe': 1,
+		'TOP_MIDDLE': 1,
 		'TOP_RIGHT': 2,
 		'MIDDLE_LEFT': 3,
 		'MIDDLE': 4,
